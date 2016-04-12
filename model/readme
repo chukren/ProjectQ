@@ -1,0 +1,1 @@
+python model_average.py -m newstartingmodel.589.080.JdF2 -o JdF.model -e JdF.model.err
