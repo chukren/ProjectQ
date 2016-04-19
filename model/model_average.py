@@ -163,8 +163,6 @@ def _average_ocean_model(models):
     model_mean.append(layer_sediment)
     model_err.append(layer_sediment_err)
 
-    print(len(model_thick),len(model_thick[3]))
-
     for i in range(2, layer_max):
         # make sure is not empty
         if model_thick[i]:
@@ -187,15 +185,18 @@ def _write_model(model_list, model_fname):
     type model_list :: [[layer 1], ..., [layer N], float
     type model_fname :: model name, char
     """
+    # starting value of Qmu
+    Qmu_0 = 100.0
 
     fh = open(model_fname, "w")
 
     for i in range(len(model_list)):
-        fh.write("%8.3f %8.3f %8.3f %8.3f\n" % (model_list[i][0],
-                                                model_list[i][1],
-                                                model_list[i][2],
-                                                model_list[i][3]
-                                               ))
+        fh.write("%8.3f %8.3f %8.3f %8.3f %8.3f\n" % (model_list[i][0],
+                                                      model_list[i][1],
+                                                      model_list[i][2],
+                                                      model_list[i][3],
+                                                      Qmu_0
+                                                      ))
     fh.close()
 
 if __name__ == '__main__':
