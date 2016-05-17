@@ -3,6 +3,7 @@
 import sys
 import argparse
 import numpy as np
+import copy
 import logging
 
 
@@ -165,11 +166,34 @@ def _read_model_text(filename):
     return model
 
 
-def _write_model_prem(filename):
-    """
-    write output model
-    """
-    pass
+def _perturb_model(model_reference, delta_Q, fprem):
+    model_Qmu = model_reference["Qmu"]
+    
+    if len(model_Qmu) % 2 != 0:
+        print("Not a layered model!")
+    else:
+    	nlay =  len(model_Qmu) / 2
+	print("%d layers in the model" % nlay)
+
+    for n in range(1, nlay):
+	model_perturb = copy.deepcopy(model_reference)
+        fmodel_per = "%s_layer%02d" % ("JdF1DQ",n)
+        print ("Generating model %s" % fmodel_per) 
+
+	Qmu_per = []
+    	for i in range(nlay):
+            Qmu = model_Qmu[i * 2 + 1]
+            if i != n:
+                # print Qmu
+		Qmu_per.append(Qmu)
+		Qmu_per.append(Qmu)
+            else:
+                # print (Qmu + delta_Q)
+                Qmu_per.append(Qmu + delta_Q)
+                Qmu_per.append(Qmu + delta_Q)
+
+        model_perturb["Qmu"] = Qmu_per
+        _update_prem_model(fprem, model_perturb, fmodel_per)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -182,4 +206,8 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
     model = _read_model_text(args.inputmodel)
-    _update_prem_model(args.prem, model, args.outputmodel)
+    model_ref = copy.deepcopy(model)
+    _update_prem_model(args.prem, model_ref, args.outputmodel)
+
+    delta_Q = 50
+    _perturb_model(model, delta_Q, args.prem)

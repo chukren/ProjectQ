@@ -1,0 +1,37 @@
+To use ifort, add "setenv LD_LIBRARY_PATH "$LD_LIBRARY_PATH":/opt/intel/fc/9.1.031" 
+to your  ~/.environ file and do "source ~/.enviro" if you use csh. 
+
+
+Usage
+===============
+1 To compile: 
+ifort -132 -save -o  love love.for ltable-love.for
+ifort -132 -save -o  rayleigh rayleigh.for ltable-rayleigh.for
+
+2 To run: 
+1. Edit the model file name in love.in and rayleigh.in
+2. love < love.in
+3. rayleigh < rayleigh.in
+
+The output files are: love.out  and rayleigh.out 
+	(similar to minos output, give phase and group velocity as a function of frequency)
+	(they are always calculated at fixed frequencies including frequencies at integers of mhz)
+
+                    : eigf.love and eigf.rayleigh  
+	(those are eigenfunction, they can be read)
+
+
+(3) Read eigenfunctions --- for calculation of Love/Rayleigh Q 
+    compile:  
+ifort -132 -save -o separate separate.for
+ifort -132 -save -o read-eigenfunction   read-eigenfunction.for
+   
+    run: remove-skip.pl 
+         separate.pl 
+         read-eigenfunction
+
+WARNING: eigenfunctions have been scaled to the correct normalization and have been multiplied by 
+         a factor of 1E09 for plotting purposes, divide the eigenfunction and derivatives by 
+         1E09 in calculating the Love or Rayleigh Q factors.
+
+
