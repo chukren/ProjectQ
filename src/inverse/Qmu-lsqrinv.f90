@@ -22,6 +22,7 @@ module  const
   real, parameter :: pi  = 3.14159265359
   real, parameter :: eps = 1.0E-05
   real, parameter :: ZERO = 1.0E-30
+  real, parameter :: Qmu_min = 40.
   integer, parameter :: ndat = 14       ! number of data (14 period band )
   integer, parameter :: nvar = 21       ! number of model variables (21 layers)
 end module
@@ -57,11 +58,10 @@ program lininv
   double precision, dimension(1:nvar) :: covinv  ! Cmm, damping, cov of md stdv.
   double precision, dimension(1:ndat,1:nvar) :: g
   double precision, dimension(1:nvar) :: gtd, gtdcmm           ! G^T*d
-  double precision, dimension(1:nvar,1:nvar) :: gtg, gtginv   ! G^T*G
-  double precision, dimension(1:nvar,1:nvar) :: fcov, corr
+  double precision, dimension(1:nvar,1:nvar) :: gtg, gtginv, gtg_reserve ! G^T*G
+  double precision, dimension(1:nvar,1:nvar) :: fcov, corr, resolution
 
   character(len=10) :: dummy2, dummy3
-  character(len=10), dimension(1:nvar) :: label, label2
   character(len=80) :: f_obs
   character(len=80) :: f_d
   character(len=80) :: f_m
@@ -105,7 +105,7 @@ program lininv
 
   !===
   !   Readin g data matrix:
-  !         delta_d = log10(syn) - log10(obs)
+  !         delta_d = syn - obs
   !   and the G(kernel) matrix
   !         g(i,j) = d(syn1(i)-syn2(i))/d(md1(j)-md2(j))
   !   Both are normalized by dividing the standard deviation
@@ -114,7 +114,7 @@ program lininv
   open(13,file=f_obs,status='old')
   i = 0
   do
-    read(13,*,iostat=eof)n, obsd(n), stdv(n)
+    read(13,*,iostat=eof) n, obsd(n), stdv(n)
     if(eof /= 0) exit
     i = i + 1
   enddo
@@ -127,7 +127,8 @@ program lininv
   open(13,file=f_d,status='old')
   i = 0
   do
-    read(13,*,iostat=eof)n, delta_d(n)
+    read(13,*,iostat=eof) n, delta_d(n)
+    !write(*,*) n, delta_d(n)
     if(eof /= 0) exit
     i = i + 1
   enddo
@@ -137,10 +138,12 @@ program lininv
   endif
   close(13)
 
+
   open(13,file=f_m,status='old')
   i = 0
   do
-    read(13,*,iostat=eof)n, md(n), varm(n), label(n), label2(n)
+    read(13,*,iostat=eof) n, md(n), varm(n) ! label(n), label2(n)
+    !write(*,*) n, md(n), varm(n)
     if(eof /= 0) exit
     i = i + 1
   enddo
@@ -153,7 +156,7 @@ program lininv
   open(13,file=f_m00,status='old')
   i = 0
   do
-    read(13, *, iostat=eof)n, md_00(n), dummy1, dummy2, dummy3
+    read(13, *, iostat=eof)n, md_00(n), dummy1 ! dummy2, dummy3
     if(eof /= 0) exit
     i = i + 1
   enddo
@@ -166,6 +169,7 @@ program lininv
   open(13,file=f_g, status='old')
   do
     read(13,*,iostat=eof)i, j, g(i,j)
+    !write(*,*) i, j, g(i,j)
     if(eof /= 0) exit
   enddo
   close(13)
@@ -198,7 +202,11 @@ program lininv
         gtg(k,j) = gtg(k,j) + g(i,k) * g(i,j)
       enddo
       gtg(j,k) = gtg(k,j)
-      !write(*,*)gtg(j,k),j,k
+
+      ! reserve G^T*G for resolution matrix
+      gtg_reserve(k,j) = gtg(k,j)
+      gtg_reserve(j,k) = gtg(j,k)
+
     enddo
     gtg(j,j) = gtg(j,j) + covinv(j)
   enddo
@@ -229,6 +237,9 @@ program lininv
       change(i) = change(i) + gtdcmm(j) * gtginv(i,j)
     enddo
     mdo(i) = md(i) + change(i)
+    
+    !make sure Qmu will not be too small, Q=40 is about to melt ? 
+    !if (mdo(i) < Qmu_min) mdo(i) = Qmu_min
   enddo
 
   !===
@@ -248,6 +259,18 @@ program lininv
   enddo
 
   !===
+  !   Find resolution matrix (G^T*G + Cmm^{-1})^{-1} * G^T*G
+  !===
+  do i = 1, nvar
+    do j = 1, nvar
+      resolution(i,j) = 0.0
+      do k = 1, nvar
+        resolution(i,j) = resolution(i,j) + gtginv(i,k) * gtg(k,j)
+      enddo
+    enddo
+  enddo
+
+  !===
   !   Find normalized residuals (linear problem with zero start
   !   so just use partial derivatives) and sum of squares of errors
   !===
@@ -262,7 +285,11 @@ program lininv
     misfit(i) = delta_d(i) - misfit(i)
     sumsq = sumsq + misfit(i)**2
   enddo
-  d_variance = sumsq/(ndata-nvar) ! nfree = vs, coef, thickness
+
+  ! the effective nvar is unknown considering there correlations,
+  ! so for simplicity, we use ndata as degree of freedom 
+  !d_variance = sumsq/(ndata-nvar) ! nfree = vs, coef, thickness
+  d_variance = sumsq/(ndata - 1) ! nfree = vs, coef, thickness
   dstdv = sqrt(d_variance)
 
   !===
@@ -276,14 +303,14 @@ program lininv
   !   Output results
   !===
   do i = 1, nvar
-    write(10,998)label(i),label2(i),mdo(i),stdv_md(i),md(i)
+    write(10,998) i,mdo(i),stdv_md(i),md(i)
   enddo
-998 format(A10,A10,1x,e12.5,1x,e12.5,1x,e12.5)
+998 format(i3,1x,e12.5,1x,e12.5,1x,e12.5)
 
 
   write(12,*)'Description'
   write(12,*)
-  write(12,*)'Normalized standard deviation data',dstdv
+  write(12,*)'Normalized standard deviation data', dstdv
   write(12,*)
   write(12,*)
   write(12,*)'    change      std_err'
@@ -307,7 +334,7 @@ program lininv
   write(12,*)'covariance matrix'
   do i = 1, nvar
     do j = 1, nvar 
-      write(12,*)fcov(i,j)
+      write(12,*)i, j, fcov(i,j)
     enddo
   enddo
 
@@ -315,11 +342,20 @@ program lininv
   write(12,*)'correlation matrix'
   do i = 1, nvar
     do j = 1, nvar
-      write(12,*)corr(i,j)
+      write(12,*)i, j, corr(i,j)
     enddo
   enddo
 
-  write(12,*)' pred        obsd        misfit    delta_d    imptnc'
+  write(12,*)
+  write(12,*)'resolution matrix'
+  do i = 1, nvar
+    do j = 1, nvar
+      write(12,*)i, j, resolution(i,j)
+    enddo
+  enddo
+
+  
+  write(12,*)' pred        obsd         misfit      delta_d     imptnc'
   do i = 1, ndata
     pred(i) = obsd(i) - misfit(i)
     write(12,1001)pred(i), obsd(i), misfit(i), delta_d(i), dataimp(i)
