@@ -6,11 +6,13 @@ import numpy as np
 
 ftemplate = "PAR_RAYLEIGH"
 model_list = "model.list"
+model_index = "../model/model.index"
+data_index = "../data/data.index"
 
 def _read_text(filelist):
     with open(filelist, "r") as fh:
-        models = fh.readlines()
-    return models
+        lines = fh.readlines()
+    return lines
 
 def _read_json_period(period_list_json):
     with open(period_list_json, "r") as fh:
@@ -45,7 +47,7 @@ def read_modeoutput(fmodeoutput, period_band_list):
         atten_coef_mean = np.mean(atten_coef)
         atten_coef_stdv = np.std(atten_coef)
 
-        print("%s %f %f" % (period, atten_coef_mean, atten_coef_stdv))
+        #print("%s %f %f" % (period, atten_coef_mean, atten_coef_stdv))
 
         atten_coef_period[period] = atten_coef_mean
 
@@ -56,10 +58,15 @@ def read_param(ftemplate):
         lines = fh.readlines()
     return lines
 
-def read_modellist(model_list):
-    with open(model_list, "r") as fh:
+def read_index(f_index):
+    with open(f_index, "r") as fh:
         lines = fh.readlines()
-    return lines
+
+    index_dict = {}
+    for line in lines:
+        (index, key) = line.strip().split()
+        index_dict[key] = int(index)
+    return index_dict
 
 def generate_param(param_template, model, mode_output, fparam):
     foutput = open(fparam, "w")
@@ -85,6 +92,22 @@ if __name__ == '__main__':
     period_list = _read_json_period(args.period_band)
     mode_outputs = _read_text(args.mode_output_list)
 
+    # calculate data matrix
+    # can be move out to config later
+    fraw_data = "../data/atten.dat"
+    fraw_data_json = "../data/atten.json"
+    raw_data = _read_text(fraw_data)
+    data = {}
+    for line in raw_data:
+        (period_str, atten_coef, atten_stdv) = line.strip().split()
+        period_key = period_str.split(".")[0]
+        #print period_key
+        item = {}
+        item["data"] = float(atten_coef)
+        item["stdv"] = float(atten_stdv)
+        data[period_key] = item
+
+
     # calculate atten_coef at each period for perturbed models
     atten_coef_matrix = {}
     for model in mode_outputs:
@@ -99,21 +122,58 @@ if __name__ == '__main__':
     print ("%s" % layer_id)
     atten_coef_period_ref = read_modeoutput(model, period_list)
 
+    # read index for formated output
+    m_index = read_index(model_index)
+    d_index = read_index(data_index)
+
     # fixed perturbation
     delta_q = 50.
 
     # calculate gradient
+    f_kernel = open("kernel_matrix.inp","w")
     gradient = {}
-    for layer_id in atten_coef_matrix:
+    for layer_id in sorted(atten_coef_matrix):
         synt = atten_coef_matrix[layer_id]
         gradient_period = {}
-        for period in atten_coef_period_ref:
+        for period in sorted(atten_coef_period_ref):
             atten_p = synt[period]
             atten_r = atten_coef_period_ref[period]
-            g = (atten_p - atten_r) / delta_q
+            atten_stdv = data[period]["stdv"]
+            g = (atten_p - atten_r) / delta_q / atten_stdv
             gradient_period[period] = g
-            print ("%s %s %e %e %e" % (layer_id, period, atten_p, atten_r, g))
+            #print ("%s %s %e %e %e" % (layer_id, period, atten_p, atten_r, g))
+            f_kernel.write("%3d %3d %e\n" %
+                           (d_index[period], m_index[layer_id], g))
         gradient[layer_id] = gradient_period
 
-    print json.dumps(gradient, indent=2, sort_keys=True)
+    f_kernel.close()
+
+    with open(args.gradient_output, 'w') as f:
+        json.dump(gradient, f, indent=2, sort_keys=True)
+
+
+    f_data = open("data_matrix.inp", "w")
+    d_matrix = {}
+    for period in sorted(atten_coef_period_ref):
+        atten_synt = atten_coef_period_ref[period]
+        atten_data = data[period]["data"]
+        atten_stdv = data[period]["stdv"]
+        delta_d = (atten_synt - atten_data) / atten_stdv
+        d_matrix[period] = delta_d
+        f_data.write("%3d %e\n" % (d_index[period], delta_d))
+        #print ("%s %13e %13e %13e %13e" % (
+        #    period, atten_synt, atten_data, atten_stdv, delta_d))
+
+    f_data.close()
+
+    with open(fraw_data_json, 'w') as f:
+        json.dump(data, f, indent=2, sort_keys=True)
+
+    #with open("atten_coef.syn", "w") as f:
+    #    json.dump(atten_coef_period_ref, f, indent=2, sort_keys=True)
+
+    with open("data_matrix.json", "w") as f:
+        json.dump(d_matrix, f, indent=2, sort_keys=True)
+
+
 

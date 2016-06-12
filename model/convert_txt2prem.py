@@ -2,9 +2,8 @@
 
 import sys
 import argparse
-import numpy as np
-import copy
-import logging
+# import numpy as np
+# import logging
 
 
 def _update_prem_model(filename, model, outputmodel):
@@ -137,6 +136,7 @@ def _read_model_text(filename):
             model_thick.append(r_earth_m)
         else:
             model_thick.append(model_thick[-1])
+
         model_density.append(density)
         model_vp.append(vp)
         model_vs.append(vs)
@@ -154,7 +154,6 @@ def _read_model_text(filename):
     print("Total thickness of this model is %9.1f km"
           % ((r_earth_m - model_thick[-1])/1000.0) )
 
-
     model = {}
     model["thick"] = model_thick
     model["density"] = model_density
@@ -165,23 +164,22 @@ def _read_model_text(filename):
 
     return model
 
-
 def _perturb_model(model_reference, delta_Q, fprem):
     model_Qmu = model_reference["Qmu"]
-    
+
     if len(model_Qmu) % 2 != 0:
         print("Not a layered model!")
     else:
-    	nlay =  len(model_Qmu) / 2
+        nlay =  len(model_Qmu) / 2
 	print("%d layers in the model" % nlay)
 
     for n in range(1, nlay):
 	model_perturb = copy.deepcopy(model_reference)
         fmodel_per = "%s_layer%02d" % ("JdF1DQ",n)
-        print ("Generating model %s" % fmodel_per) 
+        print ("Generating model %s" % fmodel_per)
 
 	Qmu_per = []
-    	for i in range(nlay):
+        for i in range(nlay):
             Qmu = model_Qmu[i * 2 + 1]
             if i != n:
                 # print Qmu
