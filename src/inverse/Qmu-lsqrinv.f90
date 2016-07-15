@@ -22,7 +22,7 @@ module  const
   real, parameter :: pi  = 3.14159265359
   real, parameter :: eps = 1.0E-05
   real, parameter :: ZERO = 1.0E-30
-  real, parameter :: Qmu_min = 40.
+  real, parameter :: Qmu_min = 30.
   integer, parameter :: ndat = 14       ! number of data (14 period band )
   integer, parameter :: nvar = 21       ! number of model variables (21 layers)
 end module
@@ -62,19 +62,20 @@ program lininv
   double precision, dimension(1:nvar,1:nvar) :: fcov, corr, resolution
 
   character(len=10) :: dummy2, dummy3
-  character(len=80) :: f_obs
+  character(len=120) :: f_obs
   character(len=80) :: f_d
   character(len=80) :: f_m
-  character(len=80) :: f_m00
+  character(len=120) :: f_m00
   character(len=80) :: f_g
-  character(len=80) :: foutput
-  character(len=80) :: ftsfpred
+  character(len=80) :: foutput, f_covariance, f_correlation, f_resolution
+  character(len=80) :: fmisfit
 
   !===
   !   Read input files
   !===
   write(*,*)'Input file of obs and stdv:'
   read(*,*)f_obs
+  f_obs = trim(adjustl(f_obs))
   write(*,'(A10,A15)')'read ',f_obs
 
   write(*,*)'Input file of data:'
@@ -93,15 +94,30 @@ program lininv
   read(*,*)f_g
   write(*,'(A10,A15)')'read ',f_g
 
-  write(*,*)'file name for parameter output:'
+  write(*,*)'file name for updated model output:'
   read(*,*)foutput
   write(*,*)'file name is ',foutput
   open(10,file=foutput,status='new')
 
-  write(*,*)'file name for best fit transf:'
-  read(*,*)ftsfpred
-  write(*,*)'file name is ',ftsfpred
-  open(12,file=ftsfpred,status='new')
+  write(*,*)'file name for best fit prediction and misfit:'
+  read(*,*)fmisfit
+  write(*,*)'file name is ',fmisfit
+  open(12,file=fmisfit,status='new')
+
+  write(*,*)'file name for covariance matrix:'
+  read(*,*)f_covariance
+  write(*,*)'file name is ',f_covariance
+  open(14,file=f_covariance,status='new')
+
+  write(*,*)'file name for correlation matrix:'
+  read(*,*)f_correlation
+  write(*,*)'file name is ',f_correlation
+  open(15,file=f_correlation,status='new')
+
+  write(*,*)'file name for resolution matrix:'
+  read(*,*)f_resolution
+  write(*,*)'file name is ',f_resolution
+  open(16,file=f_resolution,status='new')
 
   !===
   !   Readin g data matrix:
@@ -238,8 +254,8 @@ program lininv
     enddo
     mdo(i) = md(i) + change(i)
     
-    !make sure Qmu will not be too small, Q=40 is about to melt ? 
-    !if (mdo(i) < Qmu_min) mdo(i) = Qmu_min
+    !make sure Qmu will not be too small, Q=30 is about to melt ? 
+    if (mdo(i) < Qmu_min) mdo(i) = Qmu_min
   enddo
 
   !===
@@ -265,7 +281,7 @@ program lininv
     do j = 1, nvar
       resolution(i,j) = 0.0
       do k = 1, nvar
-        resolution(i,j) = resolution(i,j) + gtginv(i,k) * gtg(k,j)
+        resolution(i,j) = resolution(i,j) + gtginv(i,k) * gtg_reserve(k,j)
       enddo
     enddo
   enddo
@@ -288,6 +304,9 @@ program lininv
 
   ! the effective nvar is unknown considering there correlations,
   ! so for simplicity, we use ndata as degree of freedom 
+
+  ! nvar should be replaced by the rank of data covariance matrix
+
   !d_variance = sumsq/(ndata-nvar) ! nfree = vs, coef, thickness
   d_variance = sumsq/(ndata - 1) ! nfree = vs, coef, thickness
   dstdv = sqrt(d_variance)
@@ -331,31 +350,26 @@ program lininv
     enddo
   enddo
 
-  write(12,*)'covariance matrix'
   do i = 1, nvar
     do j = 1, nvar 
-      write(12,*)i, j, fcov(i,j)
+      write(14,*)i, j, fcov(i,j)
     enddo
   enddo
 
-  write(12,*)
-  write(12,*)'correlation matrix'
   do i = 1, nvar
     do j = 1, nvar
-      write(12,*)i, j, corr(i,j)
+      write(15,*)i, j, corr(i,j)
     enddo
   enddo
 
-  write(12,*)
-  write(12,*)'resolution matrix'
   do i = 1, nvar
     do j = 1, nvar
-      write(12,*)i, j, resolution(i,j)
+      ! only output diagonal elements
+      if (i == j) write(16,*) i, j, resolution(i,j)
     enddo
   enddo
 
-  
-  write(12,*)' pred        obsd         misfit      delta_d     imptnc'
+  write(12,*)' pred         obsd        misfit      delta_d      imptnc'
   do i = 1, ndata
     pred(i) = obsd(i) - misfit(i)
     write(12,1001)pred(i), obsd(i), misfit(i), delta_d(i), dataimp(i)
