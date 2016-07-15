@@ -6,8 +6,8 @@ import numpy as np
 
 ftemplate = "PAR_RAYLEIGH"
 model_list = "model.list"
-model_index = "../model/model.index"
-data_index = "../data/data.index"
+model_index = "/home/youyir/Cascadia/ProjectQ/model/model.index"
+data_index = "/home/youyir/Cascadia/ProjectQ/data/data.index"
 
 def _read_text(filelist):
     with open(filelist, "r") as fh:
@@ -26,28 +26,35 @@ def read_modeoutput(fmodeoutput, period_band_list):
 
     atten_coef_period = {}
 
-    for period in period_band_list:
+    for period in sorted(period_band_list):
         fmin = period_band_list[period]["min"]
         fmax = period_band_list[period]["max"]
 
         atten_coef = []
+        model_grpv = []
 
         for line in lines:
             if "0 R" in line and "skip" not in line:
                 (mode_n, mode_type, mode_l, mode_freq, mode_period,
                  phsv, grpv, q_rayl, qaulity, dummy) = line.strip().split()
 
+                #print("%s %f" % (grpv, float(grpv)))
                 atten_coef_temp = \
                     np.pi * float(mode_freq) / (float(grpv) * float(q_rayl))
 
                 if fmin <= float(mode_freq) <= fmax:
                     atten_coef.append(atten_coef_temp)
-                    # print period, mode_freq, q_rayl, fmin, fmax
+                    model_grpv.append(float(grpv))
+                    #print period, mode_freq, grpv, q_rayl, fmin, fmax
+                    #print len(atten_coef), len(model_grpv)
 
         atten_coef_mean = np.mean(atten_coef)
         atten_coef_stdv = np.std(atten_coef)
 
-        #print("%s %f %f" % (period, atten_coef_mean, atten_coef_stdv))
+        model_grpv_mean = np.mean(model_grpv)
+        model_grpv_stdv = np.std(model_grpv)
+
+        #print("%s %f %f" % (period, atten_coef_mean, model_grpv_mean))
 
         atten_coef_period[period] = atten_coef_mean
 
@@ -94,8 +101,8 @@ if __name__ == '__main__':
 
     # calculate data matrix
     # can be move out to config later
-    fraw_data = "../data/atten.dat"
-    fraw_data_json = "../data/atten.json"
+    fraw_data = "/home/youyir/Cascadia/ProjectQ/data/atten_raw.dat"
+    fraw_data_json = "/home/youyir/Cascadia/ProjectQ/data/atten.json"
     raw_data = _read_text(fraw_data)
     data = {}
     for line in raw_data:
@@ -112,14 +119,14 @@ if __name__ == '__main__':
     atten_coef_matrix = {}
     for model in mode_outputs:
         (dummy, layer_id) =  model.rstrip().split("_")
-        print ("%s" % layer_id)
+        #print ("%s" % layer_id)
         atten_coef_period = read_modeoutput(model, period_list)
         atten_coef_matrix[layer_id] = atten_coef_period
 
     # calculate atten_coef at each period for reference model
     model = args.reference_mode_output
     (dummy, layer_id) =  model.rstrip().split("_")
-    print ("%s" % layer_id)
+    #print ("%s" % layer_id)
     atten_coef_period_ref = read_modeoutput(model, period_list)
 
     # read index for formated output
@@ -141,7 +148,7 @@ if __name__ == '__main__':
             atten_stdv = data[period]["stdv"]
             g = (atten_p - atten_r) / delta_q / atten_stdv
             gradient_period[period] = g
-            #print ("%s %s %e %e %e" % (layer_id, period, atten_p, atten_r, g))
+            print ("%s %s %e %e %e" % (layer_id, period, atten_p, atten_r, g))
             f_kernel.write("%3d %3d %e\n" %
                            (d_index[period], m_index[layer_id], g))
         gradient[layer_id] = gradient_period
@@ -151,26 +158,29 @@ if __name__ == '__main__':
     with open(args.gradient_output, 'w') as f:
         json.dump(gradient, f, indent=2, sort_keys=True)
 
-
+    f_synt = open("atten_coef_syn.dat", "w")
     f_data = open("data_matrix.inp", "w")
+
     d_matrix = {}
+
     for period in sorted(atten_coef_period_ref):
         atten_synt = atten_coef_period_ref[period]
         atten_data = data[period]["data"]
         atten_stdv = data[period]["stdv"]
-        delta_d = (atten_synt - atten_data) / atten_stdv
+        delta_d = (atten_data - atten_synt) / atten_stdv
         d_matrix[period] = delta_d
         f_data.write("%3d %e\n" % (d_index[period], delta_d))
-        #print ("%s %13e %13e %13e %13e" % (
-        #    period, atten_synt, atten_data, atten_stdv, delta_d))
+        f_synt.write("%s %13e %13e %13e %13e\n" % (period, atten_synt,
+                                                   atten_data, atten_stdv,
+                                                   delta_d))
 
     f_data.close()
 
     with open(fraw_data_json, 'w') as f:
         json.dump(data, f, indent=2, sort_keys=True)
 
-    #with open("atten_coef.syn", "w") as f:
-    #    json.dump(atten_coef_period_ref, f, indent=2, sort_keys=True)
+    with open("atten_coef_syn.json", "w") as f:
+        json.dump(atten_coef_period_ref, f, indent=2, sort_keys=True)
 
     with open("data_matrix.json", "w") as f:
         json.dump(d_matrix, f, indent=2, sort_keys=True)
