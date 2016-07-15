@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-ftemplate = "PAR_RAYLEIGH"
+ftemplate = "../PAR_RAYLEIGH"
 model_list = "model.list"
 
 def read_param(ftemplate):
