@@ -25,6 +25,7 @@ module  const
   real, parameter :: Qmu_min = 30.
   integer, parameter :: ndat = 14       ! number of data (14 period band )
   integer, parameter :: nvar = 21       ! number of model variables (21 layers)
+  real, parameter :: smooth_mu = 1.0    ! 0.0 no application; 1.0 optimum damping
 end module
 
 !===
@@ -35,9 +36,10 @@ end module
 program lininv
   use const
   implicit none
-  integer :: i, j, k, icount,n
+  integer :: i, j, k, icount, n, irow, icol
 
   real :: dummy1
+  real :: rank
   integer :: eof
   integer :: ndata    ! number of used data 
   real, dimension(1:nvar) :: md_00, md, change, mdo
@@ -48,6 +50,10 @@ program lininv
   double precision :: d_variance, dstdv
   double precision :: sumsq
   double precision :: dt1, dt2
+  double precision :: sum_smth_c
+  double precision :: sum_smth_g
+  double precision :: smooth_coef
+  double precision :: tempcov
 
   integer, dimension(1:nvar) :: indx
   double precision, dimension(1:ndat) :: delta_d
@@ -55,9 +61,10 @@ program lininv
   double precision, dimension(1:ndat) :: dataimp
   double precision, dimension(1:nvar) :: tempimp
   double precision, dimension(1:nvar) :: stdv_md
-  double precision, dimension(1:nvar) :: covinv  ! Cmm, damping, cov of md stdv.
+  double precision, dimension(1:nvar,1:nvar) :: covinv  ! Cmm, damping, cov of md stdv.
   double precision, dimension(1:ndat,1:nvar) :: g
-  double precision, dimension(1:nvar) :: gtd, gtdcmm           ! G^T*d
+  double precision, dimension(1:nvar,1:nvar) :: rough
+  double precision, dimension(1:nvar) :: gtd, gtdcmm, cmminv_dm          ! G^T*d
   double precision, dimension(1:nvar,1:nvar) :: gtg, gtginv, gtg_reserve ! G^T*G
   double precision, dimension(1:nvar,1:nvar) :: fcov, corr, resolution
 
@@ -196,9 +203,53 @@ program lininv
 
   ndata = ndat
 
+  !===
+  !   apriori damping of model parameters, i.e., covariance matrix of model
+  !   parameter. In practice use diagonals only, Cmm.
+  !   Inverse for non-zero diagonals is 1/(stdv**2)
+  !===
   do i = 1, nvar
-    covinv(i) = 1/(varm(i)**2) 
+    do j = 1, nvar
+      covinv(i,j) = 0.0d0
+    enddo
+    covinv(i,i) = 1/(varm(i)**2) 
   enddo
+
+
+  !===
+  !   Rought matrix for minimum curvature 
+  !   Note:
+  !     This definition of smoothing matrix has minimum first order
+  !     derivative constraint on edges
+  !===
+  do irow = 1, nvar
+    do icol = 1, nvar
+      rough(irow, icol) = 0.d0
+    enddo 
+  enddo
+    
+  ! upper right corner 
+  rough(2,1) = -3
+  rough(2,2) =  6
+  rough(2,3) = -4
+  rough(2,4) =  1
+
+  ! lower right corner
+  rough(nvar-1, nvar-3) =  1
+  rough(nvar-1, nvar-2) = -4
+  rough(nvar-1, nvar-1) =  6
+  rough(nvar-1, nvar)   = -3
+
+  ! middle 
+  do irow = 3, nvar-2 
+    icol = irow
+    rough(irow, icol-2) =  1
+    rough(irow, icol-1) = -4
+    rough(irow, icol)   =  6
+    rough(irow, icol+1) = -4
+    rough(irow, icol+2) =  1
+  enddo
+
 
   !===
   !   Calculate GT*G and GT*d
@@ -210,22 +261,61 @@ program lininv
       gtd(j) = gtd(j) + g(i,j) * delta_d(i)
     enddo
 
-    gtdcmm(j) = gtd(j) - covinv(j) * (md(j) - md_00(j))
+    cmminv_dm(j) = 0.d0
 
     do k = 1, j
       gtg(k,j) = 0.0
+
       do i = 1, ndata
         gtg(k,j) = gtg(k,j) + g(i,k) * g(i,j)
       enddo
+
       gtg(j,k) = gtg(k,j)
 
       ! reserve G^T*G for resolution matrix
       gtg_reserve(k,j) = gtg(k,j)
       gtg_reserve(j,k) = gtg(j,k)
-
     enddo
-    gtg(j,j) = gtg(j,j) + covinv(j)
+
   enddo
+
+  !===
+  !   Combination of minimum length (Cmm) and curvature (rough)
+  !   smooth_coef: the smooth coefficient that minimizes, in the least squares
+  !   sense, the off-diagonal terms of GT*G, which should lead to minimal
+  !   off-diagonal terms of covariance matrix  
+  !===
+  sum_smth_c = 0.0d0
+  sum_smth_g = 0.0d0
+  do i = 2, nvar
+    do j = 1, i-1
+      sum_smth_c = sum_smth_c + rough(i,j)**2
+      sum_smth_g = sum_smth_g + rough(i,j)*gtg(i,j)
+    enddo
+  enddo
+  smooth_coef = -sum_smth_g / sum_smth_c
+  smooth_coef = smooth_coef * smooth_mu
+
+
+  do j = 1, nvar
+    do i = 1, nvar
+      gtg(i,j) = gtg(i,j) + covinv(i,j) + smooth_coef*rough(i,j)  
+    enddo
+    
+    !=== 
+    !   Add to GT*d Tarantola term penalizing misfit to original starting model
+    !   For on-side correction, do not penalizz changes from original starting
+    !   model in the iteration
+    !===
+    do i = 1, nvar
+      tempcov = (covinv(j,i) + smooth_coef * rough(j,i)) * (md(i) - md_00(i))
+      cmminv_dm(j) = cmminv_dm(j) + tempcov
+      !gtdcmm(j) = gtd(j) - covinv(j) * (md(j) - md_00(j))
+    enddo
+
+    gtdcmm(j) = gtd(j) - cmminv_dm(j)
+  enddo
+
 
   !===
   !   Invert GT*G
@@ -277,13 +367,18 @@ program lininv
   !===
   !   Find resolution matrix (G^T*G + Cmm^{-1})^{-1} * G^T*G
   !===
+  rank = 0.0
+
   do i = 1, nvar
     do j = 1, nvar
       resolution(i,j) = 0.0
+
       do k = 1, nvar
         resolution(i,j) = resolution(i,j) + gtginv(i,k) * gtg_reserve(k,j)
       enddo
     enddo
+
+    rank = rank + resolution(i,i)
   enddo
 
   !===
@@ -329,6 +424,7 @@ program lininv
 
   write(12,*)'Description'
   write(12,*)
+  write(12,*)'rank ',rank
   write(12,*)'Normalized standard deviation data', dstdv
   write(12,*)
   write(12,*)
