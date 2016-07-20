@@ -25,7 +25,7 @@ module  const
   real, parameter :: Qmu_min = 30.
   integer, parameter :: ndat = 14       ! number of data (14 period band )
   integer, parameter :: nvar = 21       ! number of model variables (21 layers)
-  real, parameter :: smooth_mu = 1.0    ! 0.0 no application; 1.0 optimum damping
+  real, parameter :: smooth_mu = 0.5    ! 0.0 no application; 1.0 optimum damping
 end module
 
 !===
@@ -48,7 +48,7 @@ program lininv
 
   double precision :: b, dpx
   double precision :: d_variance, dstdv
-  double precision :: sumsq
+  double precision :: sumsq, rms, resid_rms
   double precision :: dt1, dt2
   double precision :: sum_smth_c
   double precision :: sum_smth_g
@@ -228,7 +228,7 @@ program lininv
     enddo 
   enddo
     
-  ! upper right corner 
+  ! upper left corner 
   rough(2,1) = -3
   rough(2,2) =  6
   rough(2,3) = -4
@@ -310,9 +310,9 @@ program lininv
     do i = 1, nvar
       tempcov = (covinv(j,i) + smooth_coef * rough(j,i)) * (md(i) - md_00(i))
       cmminv_dm(j) = cmminv_dm(j) + tempcov
-      !gtdcmm(j) = gtd(j) - covinv(j) * (md(j) - md_00(j))
     enddo
 
+    !gtdcmm(j) = gtd(j) - covinv(j) * (md(j) - md_00(j))
     gtdcmm(j) = gtd(j) - cmminv_dm(j)
   enddo
 
@@ -384,8 +384,13 @@ program lininv
   !===
   !   Find normalized residuals (linear problem with zero start
   !   so just use partial derivatives) and sum of squares of errors
+  !   The effective model dimension, nvar, is unknown considering the 
+  !   correlations between each other, so for simplicity, we use 
+  !   (ndata - rank) as degree of freedom assuming rank is a good 
+  !   approximation of number of independent information
   !===
   sumsq = 0.0
+  resid_rms = 0.0
   do i = 1, ndata
     misfit(i) = 0.0
 
@@ -395,15 +400,14 @@ program lininv
 
     misfit(i) = delta_d(i) - misfit(i)
     sumsq = sumsq + misfit(i)**2
+
+    resid_rms = resid_rms + delta_d(i)**2
   enddo
 
-  ! the effective nvar is unknown considering there correlations,
-  ! so for simplicity, we use ndata as degree of freedom 
+  rms = sqrt(sumsq/ndata)
+  resid_rms = sqrt(resid_rms/ndata)
 
-  ! nvar should be replaced by the rank of data covariance matrix
-
-  !d_variance = sumsq/(ndata-nvar) ! nfree = vs, coef, thickness
-  d_variance = sumsq/(ndata - 1) ! nfree = vs, coef, thickness
+  d_variance = sumsq/(ndata - rank)
   dstdv = sqrt(d_variance)
 
   !===
@@ -424,7 +428,8 @@ program lininv
 
   write(12,*)'Description'
   write(12,*)
-  write(12,*)'rank ',rank
+  write(12,*)'rank ', rank
+  write(12,*)'rms resid_rms', rms, resid_rms
   write(12,*)'Normalized standard deviation data', dstdv
   write(12,*)
   write(12,*)
