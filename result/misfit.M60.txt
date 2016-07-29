@@ -1,0 +1,3 @@
+ rank    2.733340    
+ rms residual_rms  0.965008013742814       0.965003001143012     
+ Normalized standard deviation data   1.05976628850061
