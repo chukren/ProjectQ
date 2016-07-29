@@ -23,7 +23,7 @@ module  const
   real, parameter :: eps = 1.0E-05
   real, parameter :: ZERO = 1.0E-30
   real, parameter :: Qmu_min = 30.
-  integer, parameter :: ndat = 14       ! number of data (14 period band )
+  integer, parameter :: ndat = 16       ! number of data (16 period band )
   integer, parameter :: nvar = 21       ! number of model variables (21 layers)
   real, parameter :: smooth_mu = 0.5    ! 0.0 no application; 1.0 optimum damping
 end module
