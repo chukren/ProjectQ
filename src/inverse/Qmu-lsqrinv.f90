@@ -25,7 +25,7 @@ module  const
   real, parameter :: Qmu_min = 30.
   integer, parameter :: ndat = 16       ! number of data (16 period band )
   integer, parameter :: nvar = 21       ! number of model variables (21 layers)
-  real, parameter :: smooth_mu = 0.5    ! 0.0 no application; 1.0 optimum damping
+  real, parameter :: smooth_mu = 1.0 ! 0.5    ! 0.0 no application; 1.0 optimum damping
 end module
 
 !===
@@ -142,7 +142,7 @@ program lininv
     i = i + 1
   enddo
   if(i /= ndat) then
-    write(*,*)'number of data is not correct!'
+    write(*,*)'number of data is not correct in',f_obs
     stop
   endif
   close(13)
@@ -156,7 +156,7 @@ program lininv
     i = i + 1
   enddo
   if(i /= ndat) then
-    write(*,*)'number of data is not correct!'
+    write(*,*)'number of data is not correct in', f_d
     stop
   endif
   close(13)
@@ -466,7 +466,8 @@ program lininv
   do i = 1, nvar
     do j = 1, nvar
       ! only output diagonal elements
-      if (i == j) write(16,*) i, j, resolution(i,j)
+      !if (i == j) write(16,*) i, j, resolution(i,j)
+      write(16,*) i, j, resolution(i,j)
     enddo
   enddo
 
