@@ -134,7 +134,7 @@ if __name__ == '__main__':
     d_index = read_index(data_index)
 
     # fixed perturbation
-    delta_q = 50.
+    delta_q = 20.
 
     # calculate gradient
     f_kernel = open("kernel_matrix.inp","w")
