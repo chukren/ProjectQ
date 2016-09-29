@@ -25,7 +25,7 @@ module  const
   real, parameter :: Qmu_min = 30.
   integer, parameter :: ndat = 16       ! number of data (16 period band )
   integer, parameter :: nvar = 21       ! number of model variables (21 layers)
-  real, parameter :: smooth_mu = 1.0 ! 0.5    ! 0.0 no application; 1.0 optimum damping
+  real, parameter :: smooth_mu = 0.5    ! 0.5,  0.0 no application; 1.0 optimum damping
 end module
 
 !===
@@ -346,6 +346,15 @@ program lininv
     
     !make sure Qmu will not be too small, Q=30 is about to melt ? 
     if (mdo(i) < Qmu_min) mdo(i) = Qmu_min
+
+    !=== test 
+    ! set Qmu to a fixed value to see if the low Q is required by 
+    ! data
+    !=== Youyi Ruan 09/22 
+    !if (i == 10 .or. i == 11 ) then
+    !    mdo(i) = 50
+    !endif
+
   enddo
 
   !===
