@@ -175,17 +175,17 @@ def _perturb_model(model_reference, delta_Q, fprem):
 	print("%d layers in the model" % nlay)
 
     for n in range(1, nlay):
-	model_perturb = copy.deepcopy(model_reference)
+        model_perturb = copy.deepcopy(model_reference)
         fmodel_per = "%s_layer%02d" % ("JdF1DQ",n)
         print ("Generating model %s" % fmodel_per)
 
-	Qmu_per = []
+        Qmu_per = []
         for i in range(nlay):
             Qmu = model_Qmu[i * 2 + 1]
             if i != n:
                 # print Qmu
-		Qmu_per.append(Qmu)
-		Qmu_per.append(Qmu)
+                Qmu_per.append(Qmu)
+                Qmu_per.append(Qmu)
             else:
                 # print (Qmu + delta_Q)
                 Qmu_per.append(Qmu + delta_Q)
@@ -208,5 +208,5 @@ if __name__ == '__main__':
     model_ref = copy.deepcopy(model)
     _update_prem_model(args.prem, model_ref, args.outputmodel)
 
-    delta_Q = 50
+    delta_Q = 20.
     _perturb_model(model, delta_Q, args.prem)
