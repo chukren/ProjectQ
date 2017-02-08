@@ -16,6 +16,8 @@
 !     Add term to stablize the model variations 1/Cmm * (m-m0)
 !
 !  May 15 2016 chukren Princeton 
+!     Modified for the 1D Q inversion for the Juan de Fuca plate
+!     Add the second-order Tichonov regularization  
 !=======================================================================
 module  const
   implicit none
@@ -347,13 +349,13 @@ program lininv
     !make sure Qmu will not be too small, Q=30 is about to melt ? 
     if (mdo(i) < Qmu_min) mdo(i) = Qmu_min
 
-    !=== test 
+    !=== resolution test 
     ! set Qmu to a fixed value to see if the low Q is required by 
     ! data
-    !=== Youyi Ruan 09/22 
-    !if (i == 10 .or. i == 11 ) then
-    !    mdo(i) = 50
-    !endif
+    !=== Youyi Ruan 09/22/2016 
+    if (i == 10 .or. i == 11 .or. i == 12) then
+        mdo(i) = 35
+    endif
 
   enddo
 
