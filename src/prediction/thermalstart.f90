@@ -20,6 +20,10 @@
     
   private
 
+  !===
+  ! constants
+  !===
+
   real, parameter :: R = 8.314462            ! gas constant
   integer, parameter :: maxvert = 400
   real, parameter :: pi = 3.14159265359
@@ -29,10 +33,15 @@
 
   real :: zeroaget(maxvert), zerocoeff(maxvert)
 
-  !=== subroutines ===
+  !=== 
+  ! subroutines 
+  !===
+
   public :: setupzeroage
   public :: tempest
+  public :: linear_solidus
   public :: predotite_solidus_Hirschmann2000
+  public :: predotite_wetsolidus_Hirschmann2000
   public :: hydrostatic_pressure
   public :: unrelaxed_shear_modulus
   public :: shear_viscosity
@@ -42,7 +51,10 @@
   public :: grain_boundary_sliding_atten
   public :: arrhenius_atten
  
-  !=== variables ===
+  !=== 
+  ! variables 
+  !===
+
   public :: zeroaget, zerocoeff
   public :: pottemp, adbatgrad, srate
 
@@ -114,6 +126,19 @@
     end subroutine
 
 
+    subroutine linear_solidus(depth, temperature)
+      implicit none
+      ! dry solidus
+      real, parameter :: solidus0 = 1100.       ! dry solidus temperature at zero pressure (deg C)
+      real, parameter :: solgrad = 3.5          ! gradient of dry solidus (degC/km) 
+      real :: depth, temperature                ! km, C
+
+      temperature = solidus0 + solgrad * depth
+
+      return
+    end subroutine
+
+
     subroutine predotite_solidus_Hirschmann2000(pressure, temperature)
       implicit none
       real, parameter :: coeff_a = -5.14   ! C/GPa^2
@@ -128,21 +153,33 @@
     end subroutine
 
 
+    subroutine predotite_wetsolidus_Hirschmann2000(pressure, temperature)
+      implicit none
+      real, parameter :: coeff_a = -5.14   ! C/GPa^2
+      real, parameter :: coeff_b = 120.9   ! C/GPa
+      real, parameter :: coeff_c = 1120.7  ! C
+
+      real :: pressure, temperature
+
+      Temperature = coeff_c + coeff_b * pressure + coeff_a * pressure**2
+
+      return
+    end subroutine
+
+
     subroutine unrelaxed_shear_modulus(temperature, pressure, shear_modulus)
       implicit none
 
-      !=== From Issak, JGR, 1992
-      real, parameter :: Gur   = 82.45E+09      ! unrelaxed modulus (GPa)
-      real, parameter :: dGudT = -13.6E+06      ! temp derivative GPa/K
-      real, parameter :: dGudP = 1.8            ! pressure derivative GPa/GPa
+      !=== From Issak, JGR, 1992 in McCarthy et al. (2011)
+      !real, parameter :: Gur   = 82.45E+09      ! unrelaxed modulus (GPa)
+      !real, parameter :: dGudT = -13.6E+06      ! temp derivative GPa/K
+      !real, parameter :: dGudP = 1.8            ! pressure derivative GPa/GPa
 
-      !=== Inverted from Priestley & McKenzie, EPSL, (2013) 
-      !real, parameter :: Gur   = 72.45E+09      ! unrelaxed modulus (Pa)
-      !real, parameter :: dGudT = -10.94E+06     ! temp derivative Pa/degK
-      !real, parameter :: dGudP = 1.987          ! pressure derivative Pa/Pa
-
-      !=== Fit for Juan de Fuca  
-      !real, parameter :: dGudP = 1.500          ! pressure derivative Pa/Pa
+      !=== Inverted from Priestley & McKenzie, EPSL, (2013) by Yamauchi & Takei
+      ! JGR (2016)
+      real, parameter :: Gur   = 72.45E+09      ! unrelaxed modulus (Pa)
+      real, parameter :: dGudT = -10.94E+06     ! temp derivative Pa/degK
+      real, parameter :: dGudP = 1.987          ! pressure derivative Pa/Pa
 
       real :: temperature, pressure
       real :: shear_modulus
@@ -162,36 +199,46 @@
     subroutine shear_viscosity(temperature, pressure, premelt_coeff, viscosity)
       implicit none
 
+      !=== Inverted from Priestley & McKenzie, EPSL, (2013) by Yamauchi & Takei
+      ! JGR (2016)
       real, parameter :: Tr = 1200. + 273.      ! reference temperature
       real, parameter :: Pr = 1.5E+09           ! reference pressure  
       real, parameter :: V  = 7.913E-06         ! activation volume (m^3/mol)
       real, parameter :: E1 = 462.5             ! activation energy in kJ/mol  
+      real, parameter :: eta0 = 6.22E+21        ! reference viscosity
 
-      !real, parameter :: Tr = 1425. + 273.      ! reference temperature
-      !real, parameter :: E1 = 400             ! activation energy in kJ/mol  
-      !real, parameter :: E1 = 500             ! activation energy in kJ/mol  
+      !=== From McCarthy et al. (2011) P.13
+      !real, parameter :: Tr = 1200. + 273.     ! reference temperature
+      !real, parameter :: Pr = 2.0E+09          ! reference pressure (???) 
+      !real, parameter :: V  = 12.E-06          ! activation volume (m^3/mol)
+      !real, parameter :: E1 = 505              ! activation energy in kJ/mol  
+      !real, parameter :: eta0 = 6.6E+19        ! reference viscosity (6.6E19)
 
-      real, parameter :: E  = E1 * 1000.          ! activation energy in J/mol
+      !=== From Donald Forsyth (personal communication)
+      !real, parameter :: Tr = 1425. + 273.     ! reference temperature (?)
+      !real, parameter :: Pr = 2.0E+09          ! reference pressure  
+      !real, parameter :: V  = 12.0E-06         ! activation volume (m^3/mol)
+      !real, parameter :: E1 = 400              ! activation energy in kJ/mol  
+      !real, parameter :: eta0 = 1.0E+21        ! reference viscosity (6.6E19)
 
-      !=== lower down the vel and atten, linear relation
-      !real, parameter :: eta0 = 10.22E+21        ! reference viscosity (6.6E19)
-      !real, parameter :: eta0 = 1.22E+21        ! reference viscosity (6.6E19)
-      real, parameter :: eta0 = 6.22E+21        ! reference viscosity (6.6E19)
+      !=== lower down eta0 will reduce the vel and atten, linear relation
+
+      real, parameter :: E  = E1 * 1000.        ! activation energy in J/mol
       real, parameter :: viscosity_max = 1.0E+23
 
-      ! Input
-      real :: temperature, pressure
+      !=== Input/Output parameters
+      real :: temperature, pressure, premelt_coeff, viscosity
 
       real :: energy_term, volume_term
-      real :: premelt_coeff, temperature_c
-      real :: viscosity, eta_nomelt
+      real :: temperature_c, eta_nomelt
 
-      ! calculate viscosity (keeping pressure at reference pressure) eqn. (17)
+      !=== temperature C to K 
       temperature_c = temperature + 273. 
 
       energy_term = exp((1. / temperature_c - 1./Tr) * E / R)
       volume_term = exp((pressure / temperature_c - Pr / Tr) * V / R)
 
+      ! calculate viscosity (keeping pressure at reference pressure) eqn. (17)
       eta_nomelt = eta0 * energy_term * volume_term
 
       if(eta_nomelt .gt. viscosity_max) eta_nomelt = viscosity_max
@@ -402,7 +449,6 @@
       real, parameter :: E  = E1*1000.          ! activation energy in J/mol
 
       ! lower down the vel and atten, linear relation
-      !real, parameter :: eta0 = 10.22E+21        ! reference viscosity (6.6E19)
       !real, parameter :: eta0 = 1.22E+21        ! reference viscosity (6.6E19)
       real, parameter :: eta0 = 6.22E+21        ! reference viscosity (6.6E19)
     
@@ -418,11 +464,10 @@
       real, parameter :: amp_b = 0.664
       
       ! change the minimum of atten linearly
-      !real, parameter :: alpha = 0.28
       real, parameter :: alpha = 0.38
       
-      real, parameter :: coeff_b = 139.44    
-      real, parameter :: coeff_a = -5.904    
+      !real, parameter :: coeff_b = 139.44    
+      !real, parameter :: coeff_a = -5.904    
 
       real :: a0,a1,a2,a3,a4,a5,a6
       real :: P, z, T, P_gpa
@@ -436,31 +481,38 @@
       real :: melt_frac
       real :: T_melt, P_melt, eta_melt
 
-      seisfreq = 0.02 ! Hz, period of seismic waves
+      !seisfreq = 0.02 ! Hz, period of seismic waves
 
       ! crudely calculate pressure at given depth - ignore density diff in crust
       P = z * 3.2 * 9.8 * 1.0E+6
       P_gpa = P / 1.0E9 ! GPa
 
-      if (z <= 80) then
-        Tm = solidus0 + solgrad * z + 2.5 * (80 - z)
+      !if (z <= 80) then
+        !Tm = solidus0 + solgrad * z + 2.5 * (80 - z)
         !Tm = solidus0 + solgrad * z + 100 + 1.25 * (80 - z)
-      else
-        Tm = solidus0 + solgrad * z
-      endif
+      !  Tm = solidus0 + solgrad * z
+      !else
+      !  Tm = solidus0 + solgrad * z
+      !endif
+      !call linear_solidus(z, Tm)
+
       !Tm = solidus0 + coeff_b * P_gpa + coeff_a * p_gpa**2
       !call predotite_solidus_Hirschmann2000(P_gpa, Tm)
+      call predotite_wetsolidus_Hirschmann2000(P_gpa, Tm)
 
       Tn = T / Tm
 
+      !=== melt fraction
       if (Tn < 1.0) then
         melt_frac = 0.0
       else
         melt_frac = (Tn - 1.0) * .3
       endif
 
+      !melt_frac = 0.0
+
       !=== debug 
-      write(*,*) z,"melt_frac:",melt_frac
+      !write(*,*) z,"melt_frac:", melt_frac
 
 
       !=== amplitude of peak: amp_p ===
@@ -470,8 +522,8 @@
         amp_p = 0.01 + 0.4 * (Tn - 0.91)
       else if (Tn < 1.0 .and. Tn >= 0.96) then
         amp_p = 0.03
-      else 
-        amp_p = 0.03
+      else ! Tn > 1.0
+        amp_p = 0.03 
       endif
 
       !=== width of peak: sigma_p ===
@@ -483,7 +535,8 @@
           sigma_p = 7.0
       end if
       
-      write(*,*) "depth/Ap/sigma:", z, amp_p, sigma_p
+      write(*,1009) "depth/Tn/melt/Ap/sigma:", z, Tn, melt_frac, amp_p, sigma_p
+1009 format(a, f9.2, f6.2, f9.6, f7.3, f7.3)
 
       !=== extra term ===
       if (Tn < Tn_eta) then
