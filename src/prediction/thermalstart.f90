@@ -44,6 +44,7 @@
   public :: predotite_wetsolidus_Hirschmann2000
   public :: hydrostatic_pressure
   public :: unrelaxed_shear_modulus
+  public :: unrelaxed_shear_modulus_FJ2005
   public :: shear_viscosity
   public :: mccarthy_etal_2011
   public :: yamauchi_takei_2016
@@ -92,11 +93,16 @@
       real :: depth, thick, vs, vp, Q
       real :: dep_inc, dep_hf, depth_i
       real :: t_sum, thick_inc, thick_hf
+
+      ! extra parameters for yamauchi_takei_2016()
+      real :: seisfreq,Tm,eta,J1,J2,Q_b,Vs_b
+
       integer :: nl = 100 ! integral points
       integer :: i
      
       tmax = zeroaget(201)
       thick_inc = thick / nl
+      thick_hf = thick_inc / 2.0
       t_sum = 0.0
 
       do i = 1, nl
@@ -156,7 +162,7 @@
     subroutine predotite_wetsolidus_Hirschmann2000(pressure, temperature)
       implicit none
       real, parameter :: coeff_a = -5.14   ! C/GPa^2
-      real, parameter :: coeff_b = 120.9   ! C/GPa
+      real, parameter :: coeff_b = 111.9   ! C/GPa
       real, parameter :: coeff_c = 1120.7  ! C
 
       real :: pressure, temperature
@@ -193,6 +199,28 @@
       shear_modulus = Gur + (temperature + 273.) * dGudT + pressure * dGudP
 
       return
+    end subroutine
+
+    subroutine unrelaxed_shear_modulus_FJ2005(temperature, grainsize, shear_modulus)
+        implicit none
+        ! From Faul & Jackson, 2005; Tabel 1
+        ! Ju = Ju(P) + dln(Ju)
+
+        real, parameter :: JuP = 0.0149             ! 1/GPa
+        real, parameter :: dlnJudT = 9.1E-04        ! 1/K
+        real, parameter :: grainsize_ref = 1.0E-05  ! meter
+        real, parameter :: grainsize_coef = 0.16    ! 
+        real, parameter :: Tr = 1223                ! k
+
+        real :: temperature, grainsize, Ju, shear_modulus
+        real :: grainsize_term
+
+        grainsize_term = (grainsize / grainsize_ref)**(-grainsize_coef)
+
+        Ju = 1.0 + dlnJudT * grainsize_term * (temperature + 273. - Tr) 
+        shear_modulus = 1.0 / Ju
+
+        return
     end subroutine
 
 
