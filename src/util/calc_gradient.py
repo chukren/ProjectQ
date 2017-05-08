@@ -9,6 +9,10 @@ model_list = "model.list"
 model_index = "/home/youyir/Cascadia/ProjectQ/model/model.index"
 data_index = "/home/youyir/Cascadia/ProjectQ/data/data.index"
 
+# can be move out to config later
+fraw_data = "/home/youyir/Cascadia/ProjectQ/data/atten_raw.dat"
+fraw_data_json = "/home/youyir/Cascadia/ProjectQ/data/atten.json"
+
 def _read_text(filelist):
     with open(filelist, "r") as fh:
         lines = fh.readlines()
@@ -100,9 +104,6 @@ if __name__ == '__main__':
     mode_outputs = _read_text(args.mode_output_list)
 
     # calculate data matrix
-    # can be move out to config later
-    fraw_data = "/home/youyir/Cascadia/ProjectQ/data/atten_raw.dat"
-    fraw_data_json = "/home/youyir/Cascadia/ProjectQ/data/atten.json"
     raw_data = _read_text(fraw_data)
     data = {}
     for line in raw_data:
@@ -134,7 +135,8 @@ if __name__ == '__main__':
     d_index = read_index(data_index)
 
     # fixed perturbation
-    delta_q = 20.
+    #delta_q = 20.
+    delta_qinv = 0.002
 
     # calculate gradient
     f_kernel = open("kernel_matrix.inp","w")
@@ -146,7 +148,8 @@ if __name__ == '__main__':
             atten_p = synt[period]
             atten_r = atten_coef_period_ref[period]
             atten_stdv = data[period]["stdv"]
-            g = (atten_p - atten_r) / delta_q / atten_stdv
+            #g = (atten_p - atten_r) / delta_q / atten_stdv
+            g = (atten_p - atten_r) / delta_qinv / atten_stdv
             gradient_period[period] = g
             print ("%s %s %e %e %e" % (layer_id, period, atten_p, atten_r, g))
             f_kernel.write("%3d %3d %e\n" %
