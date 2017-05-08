@@ -25,6 +25,8 @@ module  const
   real, parameter :: eps = 1.0E-05
   real, parameter :: ZERO = 1.0E-30
   real, parameter :: Qmu_min = 30.
+  real, parameter :: Qmuinv_max = 0.1
+  real, parameter :: Qmuinv_min = 0.002
   integer, parameter :: ndat = 16       ! number of data (16 period band )
   integer, parameter :: nvar = 21       ! number of model variables (21 layers)
   real, parameter :: smooth_mu = 0.5    ! 0.5,  0.0 no application; 1.0 optimum damping
@@ -346,16 +348,17 @@ program lininv
     enddo
     mdo(i) = md(i) + change(i)
     
-    !make sure Qmu will not be too small, Q=30 is about to melt ? 
-    if (mdo(i) < Qmu_min) mdo(i) = Qmu_min
+    !make sure Qmu will not be too small or too large, Qmu = [10, 500] 
+    if (mdo(i) > Qmuinv_max) mdo(i) = Qmuinv_max
+    if (mdo(i) < Qmuinv_min) mdo(i) = Qmuinv_min
 
     !=== resolution test 
     ! set Qmu to a fixed value to see if the low Q is required by 
     ! data
     !=== Youyi Ruan 09/22/2016 
-    if (i == 10 .or. i == 11 .or. i == 12) then
-        mdo(i) = 35
-    endif
+    !if (i == 10 .or. i == 11 .or. i == 12) then
+    !    mdo(i) = 35
+    !endif
 
   enddo
 
