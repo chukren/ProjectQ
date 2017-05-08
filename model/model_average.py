@@ -43,7 +43,13 @@ def _read_model_txt(model_file):
 
     for i in range(1,n_model):
         model = {}
-        lon, lat = mlines[n_line].strip().split()
+
+        try:
+            print("readind model %d at line %d" % (i, n_line))
+            lon, lat = mlines[n_line].strip().split()
+        except ValueError:
+            print ("Error at line %d\n" % n_line)
+
         n_model_line = int( mlines[n_line + 1].strip() )
 
         model["lon"] = float(lon)
@@ -69,11 +75,11 @@ def _average_ocean_model(models):
     type model : model list
     """
 
-    lon_min = -132.0
-    lon_max = -120.0
+    lon_min = -131.0
+    lon_max = -125.5
 
-    lat_min = 38.0
-    lat_max = 50.0
+    lat_min = 39.5
+    lat_max = 49.5
 
     vs_upper_crust_min = 2.63 # km/s
     thick_sediment_max = 2.0 # km
