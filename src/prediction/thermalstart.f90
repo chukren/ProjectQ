@@ -13,6 +13,9 @@
 ! Y.Y. Ruan 01/26/2017
 !   Add peritotite solidus (Hirschmann, 2000)
 !
+! Y.Y. Ruan 02/07/2018
+!   Add depleted peritotite solidus (Ruan et al., 2018)
+!
 !=======================================================
 
   module thermodel
@@ -51,6 +54,7 @@
   public :: shear_viscosity
   public :: mccarthy_etal_2011
   public :: yamauchi_takei_2016
+  public :: yamauchi_takei_2016_deplTs
   public :: thermantle
   public :: grain_boundary_sliding_atten
   public :: arrhenius_atten
@@ -210,7 +214,8 @@
       real, parameter :: Gur   = 72.45E+09      ! unrelaxed modulus (Pa)
       real, parameter :: dGudT = -10.94E+06     ! temp derivative Pa/degK
       !real, parameter :: dGudP = 1.987          ! pressure derivative Pa/Pa
-      real, parameter :: dGudP = 1.5           ! pressure derivative Pa/Pa
+      !real, parameter :: dGudP = 1.5           ! pressure derivative Pa/Pa
+      real, parameter :: dGudP = 1.75           ! pressure derivative Pa/Pa
 
       real :: temperature, pressure
       real :: shear_modulus     ! Pa
@@ -685,6 +690,167 @@
 
       return
     end subroutine
+
+
+    !===========================================================      
+    ! This program predicts shear velocity and Q using results from 
+    ! Yamauchi & Takei, JGR (2016), equation 11-18 and constants 
+    ! in Table 4 and Fig 20. 
+    !
+    ! With depleted solidus in Ruan et al. (2018)
+    ! Temperature and depleted solidus are generated separately
+    ! 02/07/2018
+    !===========================================================
+    subroutine yamauchi_takei_2016_deplTs(z,T,seisfreq,Vs,Q,Tm,eta,J1,J2,Q_b,Vs_b)
+      implicit none
+
+      !=== parameter are from Table 4 and Fig. 20
+      real, parameter :: R= 8.314462            ! gas constant
+      real, parameter :: twopi = 2.0*pi         !
+      real, parameter :: Tr = 1200. + 273.      ! reference temperature
+      real, parameter :: Pr = 1.5E+09           ! reference pressure  
+      real, parameter :: V  = 7.913E-06         ! activation volume (m^3/mol)
+      real, parameter :: E1 = 462.5             ! activation energy in kJ/mol  
+      real, parameter :: E  = E1*1000.          ! activation energy in J/mol
+
+      ! lower down the vel and atten, linear relation
+      real, parameter :: eta0 = 6.22E+21        ! reference viscosity
+    
+      ! dry solidus
+      real, parameter :: solidus0 = 1100.       ! dry solidus temperature at zero pressure (deg C)
+      real, parameter :: solgrad = 3.5          ! gradient of dry solidus (degC/km) 
+
+      real, parameter :: Tn_eta = 0.94          ! normalized temperature above which
+      real, parameter :: gama = 5.0             ! the factor of extra reduction in eta
+      real, parameter :: lambda = 26            ! melt fraction dependence 
+      real, parameter :: density_m = 3.3E+03    ! mantle density used for shear wavespeed
+      real, parameter :: tau_n_p = 6.0E-05      ! normalized time scale
+      real, parameter :: amp_b = 0.664
+      
+      ! this parameter change the minimum of atten linearly
+      real, parameter :: alpha = 0.38
+      
+      real :: a0,a1,a2,a3,a4,a5,a6
+      real :: P, z, T, P_gpa
+      real :: eta, Gu, dGup, tau_m, G1, taufac, xn, qinv, q, Vs
+      real :: seisfreq, fn, fnln, tau_n
+      real :: J1, J2, J1_b, J2_b
+      real :: q_b, qinv_b, vs_b
+      real :: Tn, Tm
+      real :: A_eta ! exrta term in eqn. (17) to account for reduction of eta just below solidus 
+      real :: amp_p, sigma_p ! amplitude and width of peak
+      real :: melt_frac
+      real :: T_melt, P_melt, eta_melt
+
+      ! crudely calculate pressure at given depth - ignore density diff in crust
+      P = z * 3.2 * 9.8 * 1.0E+6
+      !P_gpa = P / 1.0E9 ! GPa
+
+      !call predotite_solidus_Hirschmann2000(P_gpa, Tm)
+      !call predotite_depleted_solidus(Tm)
+
+      Tn = T / Tm
+      !=== debug 
+      !write(*,*) z,"solidus temperature:", Tm,"homologous T:",Tn
+
+      !=== melt fraction
+      !if (Tn < 1.0) then
+      !  melt_frac = 0.0
+      !else
+      !  melt_frac = (Tn - 1.0) * .3
+      !endif
+
+      melt_frac = 0.0
+
+      !=== debug 
+      !write(*,*) z,"melt_frac:", melt_frac
+
+
+      !=== amplitude of peak: amp_p ===
+      if (Tn < 0.91) then
+          amp_p = 0.01 
+      else if (Tn < 0.96 .and. Tn >= 0.91) then
+          amp_p = 0.01 + 0.4 * (Tn - 0.91)
+      else if (Tn < 1.0 .and. Tn >= 0.96) then
+          amp_p = 0.03
+      else ! Tn > 1.0
+          amp_p = 0.03 
+      endif
+
+      !=== width of peak: sigma_p ===
+      if (Tn < 0.92) then
+          sigma_p = 4.0 
+      else if (Tn < 1.0 .and. Tn >= 0.92) then
+          sigma_p = 4.0 + 37.5 * (Tn - 0.92)
+      else
+          sigma_p = 7.0
+      end if
+      
+      !write(*,1009) "depth/Tn/melt/Ap/sigma:", z, Tn, melt_frac, amp_p, sigma_p
+1009 format(a, f9.2, f6.2, f9.6, f7.3, f7.3)
+
+      !=== extra term for pre-melting ===
+      if (Tn < Tn_eta) then
+          A_eta = 1.0
+      else if (Tn < 1 .and. Tn >= Tn_eta) then
+          A_eta = exp(-1.0 * (Tn - Tn_eta) / (Tn - Tn*Tn_eta) * log(gama))
+      else
+          A_eta = 1. / gama * exp(-lambda * melt_frac)
+      end if
+ 
+      ! calculate viscosity (keeping pressure at reference pressure) eqn. (17)
+      call shear_viscosity(T, P, A_eta, eta)
+
+      ! calculate unrelaxed shear modulus (mu_u) at temperature and pressure
+      ! Temperature: K
+      ! Pressure: GPa
+      ! Gu: Gpa
+      call unrelaxed_shear_modulus(T, P, Gu)
+      !call unrelaxed_shear_modulus_PM2003(T, P, Gu)
+      !call unrelaxed_shear_modulus_JF2010(T, P, Gu)
+      !call unrelaxed_shear_modulus_issak_1992(T, P, Gu)
+ 
+      ! grainsize set to 0.005 m
+      !call unrelaxed_shear_modulus_FJ2005(T, P, 0.005, Gu)
+
+      ! calculate characteristic Maxwell relaxation time
+      tau_m = eta / Gu
+
+      ! using 50 s as typical period, calculate normalized frequency
+      fn = seisfreq * tau_m
+      tau_n = 1. / (twopi * fn)
+
+      fnln = log(tau_n_p / tau_n)
+
+
+      J1 = 0.5 * sqrt(twopi)*amp_p*sigma_p*(1.0 - erf(fnln/sigma_p/sqrt(2.0)))
+      J1 = (1.0 / Gu) * (1.0 + amp_b * tau_n**alpha / alpha + J1)
+      J1_b = (1.0 / Gu) * (1.0 + amp_b * tau_n**alpha)
+
+      J2 = 0.5*pi*(amp_b*tau_n**alpha + amp_p*exp(-1.0*fnln**2/(2.*sigma_p**2))) + tau_n
+      J2 = (1.0 / Gu) * J2
+      J2_b = (1.0 / Gu) * (0.5*pi*(amp_b*tau_n**alpha) + tau_n)
+
+      if (fnln.gt.1.0E13) then
+        J1 = 1.0 / Gu
+      endif
+
+      qinv = J2 / J1
+      vs = sqrt(1.0/(J1 * density_m)) / 1000. ! convert to km/s
+
+      qinv_b = J2_b / J1_b
+      vs_b = sqrt(1.0/(J1_b * density_m)) / 1000.
+
+      if (qinv .lt. 0.002) qinv = .002
+      q = 1.0 / qinv
+
+      if (qinv_b .lt. 0.002) qinv_b = 0.002
+      q_b = 1.0 / qinv_b
+
+      return
+    end subroutine
+
+
 
 
     subroutine grain_boundary_sliding_atten(depth, temperature, dvv_gbs, Q)
