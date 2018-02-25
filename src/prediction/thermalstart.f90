@@ -592,7 +592,8 @@
       !call predotite_solidus_Hirschmann2000(P_gpa, Tm)
       call predotite_wetsolidus_Hirschmann2000(P_gpa, Tm)
 
-      Tn = T / Tm
+      ! Tn define as homologus temperature of K/K
+      Tn = (T + 273.) / (Tm + 273.)
 
       !=== melt fraction
       !if (Tn < 1.0) then
@@ -749,7 +750,9 @@
       !call predotite_solidus_Hirschmann2000(P_gpa, Tm)
       !call predotite_depleted_solidus(Tm)
 
-      Tn = T / Tm
+      ! Tn define as homologus temperature of K/K
+      Tn = (T + 273.) / (Tm + 273.)
+
       !=== debug 
       !write(*,*) z,"solidus temperature:", Tm,"homologous T:",Tn
 
